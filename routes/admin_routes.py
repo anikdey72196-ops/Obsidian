@@ -26,18 +26,26 @@ def _is_admin_authorized():
         return False
 
     current_user = session.get('user', '')
-    query_key = request.args.get('key', '')
 
-    if admin_user:
+    if admin_user and current_user:
         is_user_match = hmac.compare_digest(
             current_user.encode('utf-8'), admin_user.encode('utf-8')
         )
         if is_user_match:
             return True
 
-    if admin_key and query_key:
+    # Security: Do NOT accept secrets in URL query parameters (?key=...)
+    # Query parameters are logged in proxy/access logs and visible in browser history.
+    # Accept admin secret key strictly via HTTP header (X-Admin-Key or Authorization Bearer) only.
+    admin_header_key = request.headers.get('X-Admin-Key', '').strip()
+    if not admin_header_key:
+        auth_header = request.headers.get('Authorization', '').strip()
+        if auth_header.startswith('Bearer '):
+            admin_header_key = auth_header[7:].strip()
+
+    if admin_key and admin_header_key:
         is_key_match = hmac.compare_digest(
-            query_key.encode('utf-8'), admin_key.encode('utf-8')
+            admin_header_key.encode('utf-8'), admin_key.encode('utf-8')
         )
         if is_key_match:
             return True

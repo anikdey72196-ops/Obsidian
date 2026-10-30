@@ -1,5 +1,8 @@
 import os
+import secrets
 import urllib.parse
+from flask import g
+from werkzeug.middleware.proxy_fix import ProxyFix
 from imports import Flask, render_template, redirect, session, url_for, flash, NullPool, CSRFProtect
 from extensions import db, jwt
 
@@ -17,7 +20,7 @@ app = Flask(__name__)
 secret_key = os.environ.get('FLASK_SECRET_KEY')
 if not secret_key:
     raise RuntimeError("FLASK_SECRET_KEY Error")
-app.secret_key=secret_key
+app.secret_key = secret_key
 
 DB_USER = os.environ.get('DB_USER', 'root')
 DB_PASSWORD_RAW = os.environ.get('DB_PASSWORD', '')
@@ -28,6 +31,10 @@ DB_PORT = os.environ.get('DB_PORT', '3306')
 
 is_vercel = os.environ.get('VERCEL') == '1' or os.environ.get('VERCEL_ENV') is not None
 is_render = os.environ.get('RENDER') == 'true' or os.environ.get('RENDER_SERVICE_ID') is not None
+
+# Reverse-proxy support: safely propagate client IP without allowing client header spoofing
+if is_vercel or is_render or os.environ.get('TRUST_PROXY', 'false').lower() in ('true', '1', 't'):
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 if os.environ.get('PYTEST_CURRENT_TEST'):
     db_uri = 'sqlite:///:memory:'
@@ -70,7 +77,7 @@ db.init_app(app)
 app.register_blueprint(auth_bp)
 app.register_blueprint(expenses_bp)
 app.register_blueprint(ai_bp)
-csrf.exempt(ai_bp)
+# AI Blueprint is NOT exempt from CSRF (session auth requires CSRF protection)
 
 # Register Modular Web Routes
 app.register_blueprint(auth_web_bp)
@@ -99,6 +106,16 @@ app.add_url_rule('/delete_expense/<int:id>', endpoint='delete_expense', view_fun
 app.add_url_rule('/admin', endpoint='admin_panel', view_func=app.view_functions['admin_web.admin_panel'])
 
 
+@app.before_request
+def generate_csp_nonce():
+    g.csp_nonce = secrets.token_hex(16)
+
+
+@app.context_processor
+def inject_csp_nonce():
+    return dict(csp_nonce=getattr(g, 'csp_nonce', ''))
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -106,10 +123,13 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    # Allow Tailwind CDN, Chart.js CDN, Three.js CDN, and Google Fonts
+    
+    nonce = getattr(g, 'csp_nonce', '')
+    nonce_val = f"'nonce-{nonce}' " if nonce else ""
+    # script-src uses a cryptographic per-request nonce without 'unsafe-inline' to protect against XSS
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; "
+        f"script-src 'self' {nonce_val}https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "

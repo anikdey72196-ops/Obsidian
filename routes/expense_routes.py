@@ -10,6 +10,11 @@ expense_web_bp = Blueprint('expense_web', __name__)
 GOOD_CATEGORIES = {'Education', 'Health', 'Utilities', 'Software', 'Personal Care', 'Investment'}
 BAD_CATEGORIES = {'Shopping', 'Entertainment', 'Party/junk food'}
 
+VALID_CATEGORIES = {
+    'Food & Dining', 'Transport', 'Shopping', 'Utilities', 'Health',
+    'Entertainment', 'Education', 'Software', 'Personal Care', 'Investment', 'Other'
+}
+
 CATEGORY_META = {
     'Food & Dining': {'icon': 'restaurant', 'color_class': 'text-violet-400', 'bg_class': 'bg-violet-400/10'},
     'Transport': {'icon': 'commute', 'color_class': 'text-emerald-400', 'bg_class': 'bg-emerald-400/10'},
@@ -228,6 +233,10 @@ def add_expense():
             flash("Category, Amount, and Date are required.", "danger")
             return redirect(url_for('expense_web.add_expense'))
 
+        if category not in VALID_CATEGORIES:
+            flash(f"Invalid category. Please select a valid category from the list.", "danger")
+            return redirect(url_for('expense_web.add_expense'))
+
         try:
             amount = float(amount_str)
             if amount <= 0 or amount > 1000000 or str(amount_str).lower() in ('inf', '-inf', 'nan', '1e10', 'infinity'):
@@ -278,6 +287,9 @@ def edit_expense(id):
         description = request.form.get('description')
 
         if category:
+            if category not in VALID_CATEGORIES:
+                flash("Invalid category. Please select a valid category from the list.", "danger")
+                return redirect(url_for('expense_web.edit_expense', id=id))
             expense.category = category
         if amount_str:
             try:

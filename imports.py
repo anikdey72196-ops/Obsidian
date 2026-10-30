@@ -18,7 +18,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from sqlalchemy.pool import NullPool
 
 from extensions import db, jwt
-from models import User, Expense
+from models import User, Expense, LoginAttempt
 from form import RegistrationForm, LoginForm
 
 __all__ = [
@@ -29,5 +29,5 @@ __all__ = [
     'jsonify', 'Blueprint', 'generate_password_hash', 'check_password_hash',
     'CSRFProtect', 'create_access_token', 'jwt_required', 'get_jwt_identity',
     # Database, Models & Forms
-    'db', 'jwt', 'User', 'Expense', 'RegistrationForm', 'LoginForm'
+    'db', 'jwt', 'User', 'Expense', 'LoginAttempt', 'RegistrationForm', 'LoginForm'
 ]
