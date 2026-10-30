@@ -32,7 +32,10 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Configure JWT
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', os.urandom(24).hex())
+    jwt_secret_key = os.environ.get('JWT_SECRET_KEY')
+    if not jwt_secret_key:
+        raise RuntimeError("JWT_SECRET_KEY environment variable set nahi hai! Production mein yeh required hai.")
+    app.config['JWT_SECRET_KEY'] = jwt_secret_key
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
     # Initialize extensions
@@ -51,4 +54,5 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True, port=5000)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'FALSE').lower() in ('true' , '1')
+    app.run(debug=debug_mode, port=5000)

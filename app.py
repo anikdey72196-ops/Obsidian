@@ -14,7 +14,10 @@ from routes.admin_routes import admin_web_bp
 login_attempts = app_login_attempts
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
+secret_key = os.environ.get('FLASK_SECRET_KEY')
+if not secret_key:
+    raise RuntimeError("FLASK_SECRET_KEY Error")
+app.secret_key=secret_key
 
 DB_USER = os.environ.get('DB_USER', 'root')
 DB_PASSWORD_RAW = os.environ.get('DB_PASSWORD', '')
