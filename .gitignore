@@ -1,2 +1,40 @@
+# Secrets - NEVER commit!
 .env
-/__pycache__
+.env.*
+!.env.example
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+app.log
+server.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Pytest cache
+.pytest_cache/
+
+# k6 results output (optional - uncomment if needed)
+# load_tests/results/
