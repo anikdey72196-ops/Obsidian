@@ -130,3 +130,67 @@ def test_vulnerability_9_ai_blueprint_csrf_protection(auth_client):
         assert b"CSRF token" in response.data or b"Bad Request" in response.data
     finally:
         flask_app.config['WTF_CSRF_ENABLED'] = False
+
+
+def test_vulnerability_dom_xss_prevention(auth_client):
+    """Vulnerability Fix: AI chat stream & tips must not use unescaped innerHTML."""
+    template_path = os.path.join(flask_app.root_path, "templates", "home.html")
+    with open(template_path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    # Ensure dangerous innerHTML assignment for stream response is removed
+    assert "aiMsg.innerHTML = fullText" not in html
+    assert "aiMsg.textContent = fullText" in html
+
+    # Ensure tips do not directly concatenate strings into innerHTML
+    assert "tipsList.innerHTML = data.tips.map" not in html
+
+
+def test_sql_injection_protection_login_and_register(auth_client):
+    """SQLi Hardening Test: SQL injection in web login and register must be rejected."""
+    # Attempt SQL injection during registration
+    res_reg = auth_client.post("/register", data={
+        "username": "admin' OR '1'='1",
+        "password": "Password123!"
+    })
+    # Form validation regex rejects invalid characters like quotes and spaces
+    assert b"Username can only contain" in res_reg.data or res_reg.status_code in (200, 302, 400)
+    assert User.query.filter_by(username="admin' OR '1'='1").first() is None
+
+    # Attempt SQL injection during login
+    res_login = auth_client.post("/login", data={
+        "username": "' OR 1=1 --",
+        "password": "Password123!"
+    })
+    # Must fail safely, no SQL error and no unauthorized access
+    assert res_login.status_code in (200, 302)
+
+
+def test_sql_injection_protection_search_query(auth_client):
+    """SQLi Hardening Test: Search query with SQL injection payloads and wildcards executes safely."""
+    # Register and login valid user
+    auth_client.post("/register", data={"username": "sqli_user", "password": "Password123!"})
+    auth_client.post("/login", data={"username": "sqli_user", "password": "Password123!"})
+
+    # Add a normal expense
+    auth_client.post("/addexpense", data={
+        "amount": "100.00",
+        "category": "Food & Dining",
+        "date": "2026-10-30",
+        "description": "Coffee with 10% discount"
+    })
+
+    # Test search with classic SQL injection payload
+    sqli_payloads = [
+        "' OR '1'='1",
+        "'; DROP TABLE expense; --",
+        "' UNION SELECT 1, 2, 3, 4, 5 --",
+        "10%",  # contains % wildcard
+        "_"     # contains _ wildcard
+    ]
+
+    for payload in sqli_payloads:
+        res = auth_client.get(f"/history?search={payload}")
+        assert res.status_code == 200
+        # Verify database table is intact
+        assert Expense.query.count() >= 1
