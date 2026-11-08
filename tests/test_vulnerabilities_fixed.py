@@ -324,3 +324,30 @@ def test_idor_protection_jwt_api(auth_client):
         exp = Expense.query.get(exp_id)
         assert exp.amount == 500
         assert exp.description == "Alice Electric Bill"
+
+
+def test_rate_limiting_ip_rotation_and_database_query(auth_client):
+    """Rate Limiter Hardening: Rotating IPs cannot bypass login rate limit when targeting the same user."""
+    # Register victim user
+    auth_client.post("/register", data={"username": "victim_user", "password": "Password123!"})
+
+    # Attacker tries 5 failed logins targeting 'victim_user' with 5 completely DIFFERENT IPs
+    for i in range(5):
+        res = auth_client.post("/login", data={
+            "username": "victim_user",
+            "password": f"wrong_pwd_{i}"
+        }, environ_overrides={"REMOTE_ADDR": f"192.168.1.{10 + i}"})
+        assert res.status_code == 302
+
+    # Verify database table contains 5 records with username='victim_user'
+    with flask_app.app_context():
+        count = LoginAttempt.query.filter_by(username="victim_user").count()
+        assert count == 5
+
+    # 6th attempt from a brand-new 6th IP (e.g. 10.99.99.99) targeting victim_user must be BLOCKED!
+    res_blocked = auth_client.post("/login", data={
+        "username": "victim_user",
+        "password": "another_wrong_password"
+    }, environ_overrides={"REMOTE_ADDR": "10.99.99.99"}, follow_redirects=True)
+
+    assert b"Too many failed login attempts" in res_blocked.data

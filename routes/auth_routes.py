@@ -5,7 +5,7 @@ from imports import (
     generate_password_hash, check_password_hash, db, User, RegistrationForm, LoginForm
 )
 from services.rate_limiter import (
-    is_rate_limited, record_failed_attempt, clear_attempts, DBLoginAttempts
+    is_rate_limited, record_failed_attempt, clear_attempts, get_failed_attempts_count, DBLoginAttempts
 )
 
 logger = logging.getLogger(__name__)
@@ -47,12 +47,17 @@ def register():
 @auth_web_bp.route('/login', methods=['GET', 'POST'])
 def login():
     ip = get_client_ip()
+    form = LoginForm()
 
-    if request.method == 'POST' and is_rate_limited(ip):
+    username = None
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+
+    # Dual-key rate limit check via database query (IP + Username)
+    if request.method == 'POST' and is_rate_limited(ip, username=username):
         flash("Too many failed login attempts. Please try again in 5 minutes.", "danger")
         return redirect(url_for('auth_web.login'))
 
-    form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
         if user and check_password_hash(user.password_hash, form.password.data):
@@ -60,13 +65,18 @@ def login():
             session['user_id'] = user.id
             session['user'] = user.username
             session.permanent = True
-            clear_attempts(ip)  # clear on successful login
+            clear_attempts(ip, username=user.username)  # clear on successful login
             flash("Logged in successfully!", "success")
             return redirect(url_for('expense_web.home'))
         else:
             logger.warning("Failed login attempt from IP %s for username '%s'", ip, form.username.data)
-            record_failed_attempt(ip)
-            flash("Invalid username or password.", "danger")
+            record_failed_attempt(ip, username=form.username.data)
+            attempts = get_failed_attempts_count(ip, username=form.username.data)
+            remaining = max(0, 5 - attempts)
+            if remaining > 0:
+                flash(f"Invalid username or password. {remaining} attempt(s) remaining.", "danger")
+            else:
+                flash("Too many failed login attempts. Please try again in 5 minutes.", "danger")
             return redirect(url_for('auth_web.login'))
 
     return render_template("login.html", form=form)

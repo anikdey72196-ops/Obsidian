@@ -322,6 +322,21 @@ with app.app_context():
 
 
 
+
+# Auto-migrate login_attempts schema if username column is missing
+with app.app_context():
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.engine)
+        if 'login_attempts' in inspector.get_table_names():
+            cols = [c['name'] for c in inspector.get_columns('login_attempts')]
+            if 'username' not in cols:
+                with db.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE login_attempts ADD COLUMN username VARCHAR(80) NULL"))
+                    conn.commit()
+    except Exception:
+        pass
+
 if __name__ == '__main__':
 
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
