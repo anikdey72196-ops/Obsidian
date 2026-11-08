@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 import os
 import json
 import time
@@ -78,7 +80,8 @@ def chat():
             except requests.exceptions.ConnectionError:
                 yield f"data: {json.dumps({'error': 'Cannot connect to AI service. Please check your GROQ_API_KEY or local Ollama status.'})}\n\n"
             except Exception as e:
-                yield f"data: {json.dumps({'error': f'AI generation error: {str(e)}'})}\n\n"
+                logger.exception('AI generation error')
+                yield f"data: {json.dumps({'error': 'AI service error. Please try again.'})}\n\n"
 
         return Response(
             stream_with_context(generate()),
@@ -90,7 +93,8 @@ def chat():
         )
 
     except Exception as e:
-        return jsonify({"error": f"Service error: {str(e)}"}), 500
+        logger.exception('AI service error')
+        return jsonify({'error': 'AI service temporarily unavailable.'}), 500
 
 
 @ai_bp.route('/insights', methods=['GET'])

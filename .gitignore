@@ -1,40 +1,99 @@
-# Secrets - NEVER commit!
+# ==============================================================================
+# SECRETS & ENVIRONMENT VARIABLES (NEVER COMMIT)
+# ==============================================================================
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.cert
+*.crt
+secrets.json
+client_secrets*.json
 
-# Python compiled files
+# ==============================================================================
+# POSTMAN & PERSONAL API CLIENT FILES
+# ==============================================================================
+.postman/
+postman/
+*.postman_collection.json
+*.postman_environment.json
+*.postman_globals.json
+
+# ==============================================================================
+# PYTHON BYTECODE & CACHES
+# ==============================================================================
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.pyc
 *.pyd
+.Python
 
-# Virtual environments
+# ==============================================================================
+# VIRTUAL ENVIRONMENTS
+# ==============================================================================
 venv/
 .venv/
 env/
+ENV/
+env.bak/
+venv.bak/
 
-# Database files
+# ==============================================================================
+# DATABASE & DATA DUMPS
+# ==============================================================================
 *.db
 *.sqlite
 *.sqlite3
+*.sql
+*.dump
 
-# Logs
+# ==============================================================================
+# LOGS & TEMPORARY FILES
+# ==============================================================================
 *.log
 app.log
 server.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/settings.json
+# ==============================================================================
+# IDE & EDITOR CONFIGURATIONS
+# ==============================================================================
+.vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
 
-# Pytest cache
+# ==============================================================================
+# OS GENERATED FILES
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ==============================================================================
+# TESTING & COVERAGE
+# ==============================================================================
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
 
-# k6 results output (optional - uncomment if needed)
-# load_tests/results/
+# ==============================================================================
+# LOAD TESTING OUTPUTS
+# ==============================================================================
+load_tests/results/
+load_tests/*.log

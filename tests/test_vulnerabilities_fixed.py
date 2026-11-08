@@ -194,3 +194,133 @@ def test_sql_injection_protection_search_query(auth_client):
         assert res.status_code == 200
         # Verify database table is intact
         assert Expense.query.count() >= 1
+
+
+def test_idor_protection_web_edit_expense(auth_client):
+    """IDOR Hardening: User B cannot view or edit User A's expense via web UI."""
+    # 1. Register User A and create an expense
+    auth_client.post("/register", data={"username": "user_a", "password": "Password123!"})
+    auth_client.post("/login", data={"username": "user_a", "password": "Password123!"})
+    auth_client.post("/addexpense", data={
+        "amount": "250.00",
+        "category": "Food & Dining",
+        "date": "2026-11-01",
+        "description": "User A Private Dinner"
+    })
+
+    with flask_app.app_context():
+        exp_a = Expense.query.filter_by(description="User A Private Dinner").first()
+        assert exp_a is not None
+        exp_a_id = exp_a.id
+
+    auth_client.get("/logout")
+
+    # 2. Register User B and log in
+    auth_client.post("/register", data={"username": "user_b", "password": "Password123!"})
+    auth_client.post("/login", data={"username": "user_b", "password": "Password123!"})
+
+    # User B attempts to access User A's expense edit page
+    res_get = auth_client.get(f"/edit_expense/{exp_a_id}", follow_redirects=True)
+    assert b"Expense not found or access denied." in res_get.data
+    assert b"User A Private Dinner" not in res_get.data
+
+    # User B attempts to overwrite User A's expense via POST
+    res_post = auth_client.post(f"/edit_expense/{exp_a_id}", data={
+        "amount": "1.00",
+        "category": "Shopping",
+        "date": "2026-11-01",
+        "description": "Hacked by User B"
+    }, follow_redirects=True)
+    assert b"Expense not found or access denied." in res_post.data
+
+    # Verify User A's expense was NOT modified in the database
+    with flask_app.app_context():
+        exp_check = Expense.query.get(exp_a_id)
+        assert exp_check.amount == 250.00
+        assert exp_check.description == "User A Private Dinner"
+
+
+def test_idor_protection_web_delete_expense(auth_client):
+    """IDOR Hardening: User B cannot delete User A's expense via web UI."""
+    # Register User A and create an expense
+    auth_client.post("/register", data={"username": "alice", "password": "Password123!"})
+    auth_client.post("/login", data={"username": "alice", "password": "Password123!"})
+    auth_client.post("/addexpense", data={
+        "amount": "99.00",
+        "category": "Transport",
+        "date": "2026-11-01",
+        "description": "Alice Taxi"
+    })
+
+    with flask_app.app_context():
+        exp_a = Expense.query.filter_by(description="Alice Taxi").first()
+        assert exp_a is not None
+        exp_a_id = exp_a.id
+
+    auth_client.get("/logout")
+
+    # Register User B and log in
+    auth_client.post("/register", data={"username": "bob", "password": "Password123!"})
+    auth_client.post("/login", data={"username": "bob", "password": "Password123!"})
+
+    # Bob attempts to delete Alice's expense
+    res_del = auth_client.post(f"/delete_expense/{exp_a_id}", follow_redirects=True)
+    assert b"Expense not found or could not be deleted." in res_del.data
+
+    # Verify Alice's expense is still intact in the database
+    with flask_app.app_context():
+        exp_check = Expense.query.get(exp_a_id)
+        assert exp_check is not None
+        assert exp_check.description == "Alice Taxi"
+
+
+def test_idor_protection_jwt_api(auth_client):
+    """IDOR Hardening: User B cannot view, modify, or delete User A's expense via REST API."""
+    # Register Alice via API
+    res_a_reg = auth_client.post("/auth/signup", json={"username": "api_alice", "password": "Password123!"})
+    assert res_a_reg.status_code == 201
+
+    res_a_login = auth_client.post("/auth/login", json={"username": "api_alice", "password": "Password123!"})
+    token_alice = res_a_login.get_json()["access_token"]
+
+    # Alice creates an expense
+    res_exp = auth_client.post(
+        "/expenses",
+        json={"amount": 500, "category": "Utilities", "date": "2026-11-01", "description": "Alice Electric Bill"},
+        headers={"Authorization": f"Bearer {token_alice}"}
+    )
+    assert res_exp.status_code == 201
+    exp_id = res_exp.get_json()["id"]
+
+    # Register Bob via API
+    res_b_reg = auth_client.post("/auth/signup", json={"username": "api_bob", "password": "Password123!"})
+    assert res_b_reg.status_code == 201
+
+    res_b_login = auth_client.post("/auth/login", json={"username": "api_bob", "password": "Password123!"})
+    token_bob = res_b_login.get_json()["access_token"]
+
+    # 1. Bob lists expenses -> must be empty (cannot see Alice's expense)
+    res_b_list = auth_client.get("/expenses", headers={"Authorization": f"Bearer {token_bob}"})
+    assert res_b_list.status_code == 200
+    assert len(res_b_list.get_json()) == 0
+
+    # 2. Bob attempts to modify Alice's expense -> must return 404
+    res_b_put = auth_client.put(
+        f"/expenses/{exp_id}",
+        json={"amount": 1, "description": "Bob Tampered"},
+        headers={"Authorization": f"Bearer {token_bob}"}
+    )
+    assert res_b_put.status_code == 404
+
+    # 3. Bob attempts to delete Alice's expense -> must return 404
+    res_b_del = auth_client.delete(
+        f"/expenses/{exp_id}",
+        headers={"Authorization": f"Bearer {token_bob}"}
+    )
+    assert res_b_del.status_code == 404
+
+    # 4. Verify Alice's expense is unchanged
+    with flask_app.app_context():
+        exp = Expense.query.get(exp_id)
+        assert exp.amount == 500
+        assert exp.description == "Alice Electric Bill"
