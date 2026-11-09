@@ -98,11 +98,24 @@ if os.environ.get('PYTEST_CURRENT_TEST'):
 
 elif os.environ.get('DATABASE_URL') and 'dpg-xxx' not in os.environ.get('DATABASE_URL'):
 
-    db_uri = os.environ.get('DATABASE_URL')
+    db_uri = os.environ.get('DATABASE_URL', '').strip().strip('"\'')
 
     if db_uri.startswith("postgres://"):
 
         db_uri = db_uri.replace("postgres://", "postgresql://", 1)
+
+    # Strip ?pgbouncer=true or &pgbouncer=true (causes psycopg2 invalid connection option error)
+    import re
+    db_uri = re.sub(r'[?&]pgbouncer=true.*', '', db_uri)
+
+    # Safely URL-encode password if it has unencoded special characters (e.g. [, ], {, })
+    m_url = re.match(r'^(postgresql://)([^:]+):(.*)@([^:/]+)(:\d+)?/(.*)$', db_uri)
+    if m_url:
+        scheme, u_name, pwd, host, port_part, db_name = m_url.groups()
+        port_part = port_part or ''
+        if not re.search(r'%[0-9a-fA-F]{2}', pwd):
+            pwd = urllib.parse.quote_plus(pwd)
+        db_uri = f"{scheme}{u_name}:{pwd}@{host}{port_part}/{db_name}" 
 
 elif (is_vercel or is_render) and (os.environ.get('DB_HOST', 'localhost') in ('localhost', '127.0.0.1') or 'dpg-xxx' in os.environ.get('DATABASE_URL', '')):
 
@@ -126,7 +139,7 @@ engine_options = {
 
 
 
-if not db_uri.startswith('sqlite') and DB_HOST not in ('localhost', '127.0.0.1'):
+if db_uri.startswith('mysql') and DB_HOST not in ('localhost', '127.0.0.1'):
 
     connect_args = {'connect_timeout': 5}
 
@@ -141,6 +154,12 @@ if not db_uri.startswith('sqlite') and DB_HOST not in ('localhost', '127.0.0.1')
             ca_path = certifi.where()
 
         connect_args['ssl'] = {'ca': ca_path}
+
+    engine_options['connect_args'] = connect_args
+
+elif db_uri.startswith('postgresql'):
+
+    connect_args = {'connect_timeout': 10}
 
     engine_options['connect_args'] = connect_args
 
